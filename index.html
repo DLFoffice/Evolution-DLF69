@@ -5,14 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>แบบสำรวจใบงาน DLTV</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#f7f5fe">
+<link rel="icon" href="img/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=Sarabun:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500&family=Sarabun:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<div class="bg" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
 <main class="wrap" id="app">
   <header class="mast">
+    <div class="brand"><img class="logo" src="img/logo.png" alt="ตรามูลนิธิการศึกษาทางไกลผ่านดาวเทียม ในพระบรมราชูปถัมภ์" onerror="if(!this.dataset.f){this.dataset.f=1;this.src='https://dltv.ac.th/upload/data/users/0/316/CMS/images/logo%20dlf%20%E0%B8%AA%E0%B8%A1%E0%B8%9A%E0%B8%B9%E0%B8%A3%E0%B8%93%E0%B9%8C.png'}else{this.hidden=true}"></div>
     <p class="eyebrow" id="org"></p>
     <h1 id="title"></h1>
     <p class="sub" id="subtitle"></p>
@@ -96,6 +100,7 @@
       <h2 id="formTitle"></h2>
       <p class="hint" id="formSchool"></p>
     </header>
+    <div class="formprog" id="formProg" hidden><span class="bar"><i id="formProgBar"></i></span><span class="lbl" id="formProgLbl"></span></div>
     <div id="form" style="display:grid;gap:22px"></div>
     <div id="formErr" class="alert err" hidden></div>
     <div class="actions">
@@ -106,7 +111,7 @@
 
   <!-- STEP 4 -->
   <section class="panel done" id="s4" hidden>
-    <div class="check" aria-hidden="true">✓</div>
+    <svg class="check" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45"/><path d="M30 52 l14 14 l27 -30"/></svg>
     <h2>ส่งแบบสำรวจเรียบร้อยแล้ว</h2>
     <p>ขอบคุณที่ร่วมให้ข้อมูล คำตอบของท่านจะนำไปพัฒนาคู่มือครู แผนการจัดการเรียนรู้ และชุดกิจกรรมการเรียนรู้ (ใบงาน)</p>
     <p class="ref" id="refNo"></p>

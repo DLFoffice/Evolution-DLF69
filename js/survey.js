@@ -77,22 +77,36 @@ function ratingBlock({ key, title }, idx) {
   const total = itemCount();
   const done = Object.keys(r).length;
   let n = 0;
-  return `<details class="rblock ${done === total ? "complete" : ""}" id="rb_${key}" open>
+  return `<details class="rblock ${done === total ? "complete" : ""} ${seenBlocks.has(key) ? "" : "new"}" id="rb_${key}" open>
     <summary><h3>${esc(title)}</h3><span class="cnt" data-cnt="${key}">ตอบแล้ว ${done}/${total} ข้อ</span></summary>
     ${idx > 0 ? `<div class="tools"><button type="button" class="btn ghost small" data-copy="${key}">ใช้คะแนนเดียวกับวิชาก่อนหน้า</button></div>` : ""}
     ${groupsFor().map((g, gi) => `<div class="rgroup"><h4>${gi + 1}. ${esc(g.title)}</h4>
       ${g.items.map(t => { const i = n++; return `
         <div class="ritem" id="ri_${key}_${i}"><span class="no">${i + 1})</span><span class="txt">${esc(t)}</span>
           <div class="scale" role="radiogroup" aria-label="ข้อ ${i + 1}">${[5, 4, 3, 2, 1].map(v => `
-            <label><input type="radio" name="r_${key}_${i}" value="${v}" data-num=1 data-k="ans.ratings.${key}.${i}" data-block="${key}" ${r[i] === v ? "checked" : ""}><span>${v}</span></label>`).join("")}
+            <label><input type="radio" name="r_${key}_${i}" value="${v}" data-num=1 data-k="ans.ratings.${key}.${i}" data-block="${key}" ${r[i] === v ? "checked" : ""}><span data-v="${v}">${v}</span></label>`).join("")}
           </div></div>`; }).join("")}</div>`).join("")}
   </details>`;
 }
+let seenBlocks = new Set();
 function renderBlocks() {
   const host = $("#blocks"); if (!host) return;
   const keys = blockKeys();
   host.innerHTML = keys.length ? keys.map(ratingBlock).join("")
     : `<p class="hint">${st.role === "teacher" ? "เลือกวิชาและระดับชั้นในตารางด้านบน แล้วแบบประเมินของแต่ละวิชาจะแสดงที่นี่" : "เลือกวิชาที่ใช้ใบงานด้านบน แล้วแบบประเมินของแต่ละวิชาจะแสดงที่นี่"}</p>`;
+  seenBlocks = new Set(keys.map(b => b.key));
+  updateProgress();
+}
+// แถบความคืบหน้าด้านบนฟอร์ม (ครู/นักเรียน)
+function updateProgress() {
+  const bar = $("#formProg");
+  const keys = st.role === "director" ? [] : blockKeys();
+  if (!keys.length) { bar.hidden = true; return; }
+  const total = keys.length * itemCount();
+  const done = keys.reduce((n, b) => n + Object.keys((st.ans.ratings || {})[b.key] || {}).length, 0);
+  bar.hidden = false;
+  $("#formProgBar").style.width = `${(done / total) * 100}%`;
+  $("#formProgLbl").textContent = done === total ? `ครบ ${total} ข้อแล้ว` : `ตอบแล้ว ${done} / ${total} ข้อ`;
 }
 function updateCount(key) {
   const r = (st.ans.ratings || {})[key] || {};
@@ -101,6 +115,7 @@ function updateCount(key) {
   if (el) el.textContent = `ตอบแล้ว ${done}/${total} ข้อ`;
   const blk = $(`#rb_${key}`);
   if (blk) { blk.classList.toggle("complete", done === total); if (done === total) blk.classList.remove("missing"); }
+  updateProgress();
 }
 function scaleLegend(scale) {
   return `<p class="legend">${[5, 4, 3, 2, 1].map(v => `<span><b>${v}</b> ${esc(scale[v - 1])}</span>`).join("")}</p>`;
@@ -214,6 +229,7 @@ function renderForm() {
   $("#formSchool").textContent = `โรงเรียน${s.name || ""} · ${[s.amphoe && "อ." + s.amphoe, s.province && "จ." + s.province].filter(Boolean).join(" ")} · ${ALLOC[schoolAlloc()]}`;
   $("#form").innerHTML = st.role === "director" ? directorForm() : st.role === "teacher" ? teacherForm() : studentForm();
   renderBlocks();
+  updateProgress();
   $("#formErr").hidden = true;
 }
 
@@ -281,7 +297,7 @@ function search() {
   if (q && !digits) hits.sort((a, b) => (b._n.startsWith(q) - a._n.startsWith(q)) || a._n.length - b._n.length);
   const shown = hits.slice(0, 40);
   ul.hidden = false;
-  ul.innerHTML = shown.length ? shown.map(s => `<li><button type="button" data-code="${s.code}">
+  ul.innerHTML = shown.length ? shown.map((s, i) => `<li style="--i:${i}"><button type="button" data-code="${s.code}">
       <span class="nm">${esc(s.name)}</span><span class="badge b-${s.alloc}">${esc(ALLOC[s.alloc])}</span>
       <span class="loc">${esc(s.code)} · ต.${esc(s.tambon)} อ.${esc(s.amphoe)} จ.${esc(s.province)}</span></button></li>`).join("")
     + (hits.length > 40 ? `<li class="empty">พบ ${hits.length.toLocaleString("th-TH")} โรงเรียน แสดง 40 รายการแรก พิมพ์ชื่อให้ละเอียดขึ้นหรือเลือกจังหวัด</li>` : "")
@@ -378,14 +394,21 @@ function show(n) {
   });
   if (n === 2) { renderAffil(); setMode(st.mode); }
   if (n === 3) renderForm();
+  if (n === 4) confetti();
   window.scrollTo({ top: 0, behavior: "smooth" });
   if (n < 4) saveDraft();
 }
 
+const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ROLE_ICONS = {
+  director: svg('<path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/><path d="M12 4v-1"/>'),
+  teacher: svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10"/><path d="M12 16v4"/><path d="M7 9h6M7 12h4"/>'),
+  student: svg('<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/>')
+};
 function renderRoles() {
   $("#roles").innerHTML = Object.entries(ROLES).map(([k, r]) => `
     <button type="button" class="role" data-role="${k}" aria-pressed="${st.role === k}">
-      <span class="t">${esc(r.label)}</span><span class="n">${esc(r.note)}</span></button>`).join("");
+      <span class="ic" aria-hidden="true">${ROLE_ICONS[k]}</span><span class="t">${esc(r.label)}</span><span class="n">${esc(r.note)}</span></button>`).join("");
   $("#to2").disabled = !st.role;
 }
 
@@ -442,7 +465,7 @@ $("#submit").onclick = async () => {
   document.querySelectorAll("#s3 .missing").forEach(x => x.classList.remove("missing"));
   const errs = validateForm();
   if (errs.length) { showErrors(errs, $("#formErr")); return; }
-  const btn = $("#submit"); btn.disabled = true; btn.textContent = "กำลังส่ง…";
+  const btn = $("#submit"); btn.disabled = true; btn.classList.add("loading"); btn.textContent = "กำลังส่ง…";
   try {
     const id = await submitResponse(buildRecord());
     $("#refNo").textContent = `เลขอ้างอิง ${id}`;
@@ -456,12 +479,39 @@ $("#submit").onclick = async () => {
       ? "ระบบยังไม่พร้อมรับคำตอบ (ฐานข้อมูลไม่อนุญาตให้บันทึก) กรุณาแจ้งผู้ดูแลระบบ คำตอบของท่านยังอยู่ในหน้านี้ [permission-denied]"
       : `ส่งไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วกดส่งอีกครั้ง คำตอบของท่านยังอยู่ในหน้านี้${code ? ` [${code}]` : ""}`;
     console.error(err);
-  } finally { btn.disabled = false; btn.textContent = "ส่งแบบสำรวจ"; }
+  } finally { btn.disabled = false; btn.classList.remove("loading"); btn.textContent = "ส่งแบบสำรวจ"; }
 };
 $("#again").onclick = () => {
   const keep = { role: st.role, mode: st.mode, school: st.school, affiliation: st.affiliation };
   st = { ...fresh(), ...keep }; renderRoles(); show(st.role === "director" ? 1 : 3);
 };
+
+// ---------- confetti (pastel) ----------
+function confetti() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const c = document.createElement("canvas"); c.id = "confetti"; document.body.appendChild(c);
+  const ctx = c.getContext("2d"), dpr = devicePixelRatio || 1;
+  const W = c.width = innerWidth * dpr, H = c.height = innerHeight * dpr;
+  c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px";
+  const cols = ["#cfc6ff", "#b8ecd6", "#ffd4bd", "#c3e2ff", "#fbe9a6", "#ffc9d6", "#a99bff"];
+  const ps = Array.from({ length: 140 }, () => ({
+    x: W / 2 + (Math.random() - .5) * W * .3, y: H * .35, r: (4 + Math.random() * 6) * dpr,
+    vx: (Math.random() - .5) * 18 * dpr, vy: (-8 - Math.random() * 14) * dpr, rot: Math.random() * 6, vr: (Math.random() - .5) * .3,
+    c: cols[Math.floor(Math.random() * cols.length)], s: Math.random() < .5
+  }));
+  const t0 = performance.now();
+  (function frame(t) {
+    ctx.clearRect(0, 0, W, H);
+    const life = 1 - (t - t0) / 3200;
+    ps.forEach(p => {
+      p.vy += .45 * dpr; p.vx *= .985; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      ctx.save(); ctx.globalAlpha = Math.max(0, life); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.c;
+      if (p.s) ctx.fillRect(-p.r, -p.r / 2, p.r * 2, p.r); else { ctx.beginPath(); ctx.arc(0, 0, p.r / 1.4, 0, 7); ctx.fill(); }
+      ctx.restore();
+    });
+    if (life > 0) requestAnimationFrame(frame); else c.remove();
+  })(t0);
+}
 
 // ---------- boot ----------
 $("#org").textContent = SURVEY.org;
