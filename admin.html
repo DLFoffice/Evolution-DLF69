@@ -49,11 +49,13 @@
         <label class="f"><span>ประเภทโรงเรียน</span><select id="fType">
           <option value="">ทั้งหมด</option><option value="destination">ปลายทาง</option><option value="origin">ต้นทาง / นอกรายชื่อ</option></select></label>
         <div class="btns">
-          <button class="btn small" id="xlsx" type="button">ดาวน์โหลดข้อมูล (Excel)</button>
+          <button class="btn small" id="pdf" type="button">รายงาน PDF</button>
+          <button class="btn ghost small" id="xlsx" type="button">ดาวน์โหลดข้อมูล (Excel)</button>
           <button class="btn ghost small" id="xlsxMissing" type="button">รายชื่อโรงเรียนที่ยังไม่ตอบ</button>
           <button class="btn ghost small" id="reload" type="button">โหลดข้อมูลใหม่</button>
           <button class="btn ghost small" id="logout" type="button">ออกจากระบบ</button>
         </div>
+        <label class="choice" style="padding:6px 12px;flex:0 0 auto"><input type="checkbox" id="rpAll"><span>แนบข้อเสนอแนะทั้งหมดท้ายรายงาน PDF</span></label>
       </div>
       <p class="hint" id="status"></p>
     </section>
@@ -61,6 +63,7 @@
     <div id="view" style="display:grid;gap:18px"></div>
   </div>
 </main>
+<div id="report"></div>
 <script type="module" src="js/admin.js"></script>
 </body>
 </html>

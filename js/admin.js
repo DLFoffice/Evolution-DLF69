@@ -371,12 +371,12 @@ function viewThemes() {
     <div class="two">${groupPanels}</div>`;
 }
 
-function viewSummary() {
+function summaryBullets() {
   const base = rowsAllGroups(), list = rows();
   const B = [];
   const add = (sec, txt) => B.push([sec, txt]);
   const t = byRole(list, "teacher"), s = byRole(list, "student"), d = byRole(list, "director");
-  if (!list.length) return panel("สรุปผลสำคัญ", `<p class="hint">ยังไม่มีคำตอบในตัวกรองที่เลือก</p>`);
+  if (!list.length) return [];
   const sch = schools.filter(matchSchool), answered = new Set(list.map(r => r.schoolCode));
   add("ภาพรวมการตอบ", `มีผู้ตอบ ${nf(list.length)} คน (ผู้บริหาร ${nf(d.length)} · ครู ${nf(t.length)} · นักเรียน ${nf(s.length)}) จาก ${nf(answered.size)} โรงเรียน คิดเป็น ${fmt(pct(sch.filter(x => answered.has(x.code)).length, sch.length), 1)}% ของโรงเรียนในรายชื่อ`);
   GROUPS.forEach(g => { const l = inGroup(list, g); if (l.length) add("ภาพรวมการตอบ", `${ALLOC[g]}: ${nf(new Set(l.map(r => r.schoolCode)).size)} โรงเรียน ${nf(l.length)} คน`); });
@@ -428,6 +428,15 @@ function viewSummary() {
       if (top) add("ข้อเสนอแนะ", `${ALLOC[g]}: พูดถึง "${THEME_LABEL[top[0]]}" มากที่สุด (${nf(top[1])} จาก ${nf(arr.length)} ข้อความ)`);
     });
   }
+  return B;
+}
+function bulletsHtml(B) {
+  const secs = [...new Set(B.map(b => b[0]))];
+  return secs.map(sc => `<div class="rp-block"><h3>${esc(sc)}</h3><ul>${B.filter(b => b[0] === sc).map(b => `<li>${esc(b[1])}</li>`).join("")}</ul></div>`).join("");
+}
+function viewSummary() {
+  const B = summaryBullets();
+  if (!B.length) return panel("สรุปผลสำคัญ", `<p class="hint">ยังไม่มีคำตอบในตัวกรองที่เลือก</p>`);
   const secs = [...new Set(B.map(b => b[0]))];
   return panel("สรุปผลสำคัญ", `<div style="display:grid;gap:16px">${secs.map(sc => `<div><h3 style="margin-bottom:6px">${esc(sc)}</h3><ul style="margin:0;padding-left:1.2rem;display:grid;gap:4px">${B.filter(b => b[0] === sc).map(b => `<li>${esc(b[1])}</li>`).join("")}</ul></div>`).join("")}</div>`,
     "สรุปอัตโนมัติจากข้อมูลตามตัวกรองที่เลือก ใช้เป็นจุดตั้งต้นของรายงาน และควรตรวจกับตารางรายละเอียดในแท็บอื่น");
@@ -546,6 +555,145 @@ function exportMissing() {
   X.utils.book_append_sheet(wb, X.utils.json_to_sheet(data.length ? data : [{ "ทุกโรงเรียนตอบครบแล้ว": "" }]), "ผู้บริหารยังไม่ตอบ");
   X.writeFile(wb, `โรงเรียนที่ยังไม่ตอบ_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
+
+// =================== รายงาน PDF (พิมพ์ / บันทึกเป็น PDF จากเบราว์เซอร์) ===================
+function buildReport(includeAllTexts) {
+  const list = rows(), base = rowsAllGroups(), gs = shownGroups();
+  const d = byRole(list, "director"), t = byRole(list, "teacher"), s = byRole(list, "student");
+  const filt = [F.alloc && ALLOC[F.alloc], F.prov && `จังหวัด${F.prov}`, F.area, F.type && (F.type === "origin" ? "โรงเรียนต้นทาง" : "โรงเรียนปลายทาง")].filter(Boolean).join(" · ") || "ทุกกลุ่ม ทุกจังหวัด";
+  const today = new Date().toLocaleDateString("th-TH", { dateStyle: "long" });
+  const logo = document.querySelector(".logo");
+  const logoSrc = logo && !logo.hidden ? logo.currentSrc || logo.src : "";
+  const sec = (no, title, body, brk = true) => `<section class="rp-sec ${brk ? "brk" : ""}"><h2><span>${no}</span>${esc(title)}</h2>${body}</section>`;
+  const sub = (title, body) => `<div class="rp-block"><h3>${esc(title)}</h3>${body}</div>`;
+  const tbl = (head, rowsHtml) => `<table class="rp-t"><thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  const m = v => (v == null ? "–" : `${fmt(v)} ${lvBadge(v)}`);
+  const p0 = v => (v == null ? "–" : `${fmt(v, 0)}%`);
+
+  // 1 บทสรุปผู้บริหาร
+  const B = summaryBullets();
+  const kpis = `<div class="rp-kpis">${[["ผู้ตอบทั้งหมด", list.length, "คน"], ["โรงเรียน", new Set(list.map(r => r.schoolCode)).size, "แห่ง"], ["ผู้บริหาร", d.length, "ชุด"], ["ครู", t.length, "คน"], ["นักเรียน", s.length, "คน"]]
+    .map(([k, v, u]) => `<div><span>${k}</span><b>${nf(v)}</b><small>${u}</small></div>`).join("")}</div>`;
+  const kpis2 = `<div class="rp-kpis">${[["ครู · ค่าเฉลี่ยต่อใบงาน", overallMean(list, "teacher")], ["นักเรียน · ค่าเฉลี่ยต่อใบงาน", overallMean(list, "student")],
+    ["พึงพอใจโดยรวม (ครู)", avg(t.map(r => r.answers?.overall))], ["พึงพอใจโดยรวม (นักเรียน)", avg(s.map(r => r.answers?.overall))], ["คู่มือครู / แผน", manualMean(list)]]
+    .map(([k, v]) => `<div><span>${k}</span><b>${fmt(v)}</b><small>${v == null ? "ยังไม่มีข้อมูล" : level(v) + " (เต็ม 5)"}</small></div>`).join("")}</div>`;
+
+  // 2 ข้อมูลผู้ตอบ
+  const respRows = GROUPS.filter(g => !F.alloc || F.alloc === g).map(g => {
+    const tot = schools.filter(x => x.alloc === g && matchSchool(x)).length, l = inGroup(list, g), resp = new Set(l.map(r => r.schoolCode)).size;
+    return `<tr><td>${esc(ALLOC[g])}</td><td class="n">${g === "origin" ? "–" : nf(tot)}</td><td class="n">${nf(resp)}</td><td class="n">${g === "origin" ? "–" : fmt(pct(resp, tot), 1) + "%"}</td><td class="n">${nf(byRole(l, "director").length)}</td><td class="n">${nf(byRole(l, "teacher").length)}</td><td class="n">${nf(byRole(l, "student").length)}</td></tr>`;
+  }).join("");
+  const provs = {};
+  list.forEach(r => { const x = (provs[r.province] ||= { sc: new Set(), n: 0 }); x.sc.add(r.schoolCode); x.n++; });
+  const provRows = Object.entries(provs).sort((a, b) => b[1].n - a[1].n).slice(0, 25).map(([pv, v]) => `<tr><td>${esc(pv)}</td><td class="n">${nf(v.sc.size)}</td><td class="n">${nf(v.n)}</td></tr>`).join("");
+
+  // 3 ครู
+  const tBl = blocks(list, "teacher");
+  const tSubj = SUBJECTS.map(sj => { const st = stats(tBl.filter(b => b.subj === sj.key).map(blockMean)); return `<tr><td>${esc(sj.name)}</td><td class="n">${nf(st.n)}</td><td class="n">${m(st.mean)}</td></tr>`; }).join("");
+  const tGrade = GRADES.map(g => { const st = stats(tBl.filter(b => b.grade === g).map(blockMean)); return `<tr><td>ป.${g}</td><td class="n">${nf(st.n)}</td><td class="n">${m(st.mean)}</td></tr>`; }).join("");
+  const use = Object.entries(TEACHER_USE).map(([k, l]) => [l, t.filter(r => (r.answers?.use || []).includes(k)).length]);
+  const store = Object.entries(TEACHER_STORE).map(([k, l]) => [l, t.filter(r => r.answers?.store === k).length]);
+
+  // 4 นักเรียน
+  const sBl = blocks(list, "student");
+  const sSubj = SUBJECTS.map(sj => { const st = stats(sBl.filter(b => b.subj === sj.key).map(blockMean)); return `<tr><td>${esc(sj.name)}</td><td class="n">${nf(st.n)}</td><td class="n">${m(st.mean)}</td></tr>`; }).join("");
+  const fav = SUBJECTS.map(x => [x.name, s.filter(r => (r.answers?.favorites || []).includes(x.key)).length]).sort((a, b) => b[1] - a[1]);
+
+  // 5 ผู้บริหาร
+  const dUsage = Object.entries(DIRECTOR_USAGE).map(([k, l]) => [l, d.filter(r => r.answers?.usage === k).length]);
+  const dDel = Object.entries(DELIVERY).map(([k, l]) => [l, d.filter(r => r.answers?.delivery === k).length]);
+  const dAdq = Object.entries(ADEQUACY).map(([k, l]) => [l, d.filter(r => r.answers?.adequacy === k).length]);
+  const tm = t.filter(r => r.answers?.manual?.use);
+  const manUse = Object.entries(MANUAL_USE).map(([k, l]) => [l, tm.filter(r => r.answers.manual.use === k).length]);
+  const manRows = MANUAL_ITEMS.map((x, i) => { const st = stats(tm.map(r => r.answers.manual.r?.[i]).filter(v => v != null)); return `<tr><td class="n">${i + 1}</td><td>${esc(x)}</td><td class="n">${nf(st.n)}</td><td class="n">${fmt(st.mean)}</td><td class="n">${fmt(st.sd)}</td><td>${lvBadge(st.mean)}</td></tr>`; }).join("");
+
+  // 6 เปรียบเทียบกลุ่ม
+  const G = Object.fromEntries(gs.map(g => [g, inGroup(base, g)]));
+  const cRow = (label, fn, f = m) => `<tr><td>${label}</td>${gs.map(g => `<td class="n">${f(fn(G[g]))}</td>`).join("")}</tr>`;
+  const cmp = tbl(["ตัวชี้วัด", ...gs.map(g => esc(ALLOC[g]))], [
+    cRow("จำนวนผู้ตอบ (คน)", l => l.length, v => nf(v)),
+    cRow("ครู · ค่าเฉลี่ยรวม 20 ข้อ", l => overallMean(l, "teacher")),
+    ...TEACHER_GROUPS.map((g, i) => cRow(`&nbsp;&nbsp;ด้าน${esc(g.title)}`, l => dimMeans(l, "teacher")[i][1])),
+    cRow("นักเรียน · ค่าเฉลี่ยรวม 12 ข้อ", l => overallMean(l, "student")),
+    cRow("พึงพอใจโดยรวม (ครู)", l => avg(byRole(l, "teacher").map(r => r.answers?.overall))),
+    cRow("พึงพอใจโดยรวม (นักเรียน)", l => avg(byRole(l, "student").map(r => r.answers?.overall))),
+    cRow("คู่มือครู / แผน (เฉลี่ย 4 ข้อ)", manualMean),
+    cRow("ได้รับใบงานก่อนเปิดภาคเรียน", l => shareOf(byRole(l, "director").filter(r => r.answers?.delivery), r => r.answers.delivery === "before"), p0),
+    cRow("ใบงานไม่เพียงพอ", l => shareOf(byRole(l, "director").filter(r => r.answers?.adequacy), r => r.answers.adequacy === "short"), p0)
+  ].join(""));
+
+  // 7 ภาคเรียนเดียว
+  const oneGs = ["sem1", "sem2"].filter(g => !F.alloc || F.alloc === g);
+  const oneTerm = oneGs.map(g => {
+    const l = inGroup(base, g), staff = l.filter(r => r.role !== "student" && r.answers?.oneTerm);
+    const studs = byRole(l, "student").filter(r => r.answers?.oneTerm?.want);
+    if (!staff.length && !studs.length) return sub(ALLOC[g], `<p class="rp-muted">ยังไม่มีข้อมูล</p>`);
+    const coping = Object.entries(ONE_TERM_COPING).map(([k, x]) => [x, staff.filter(r => (r.answers.oneTerm.coping || []).includes(k)).length]).sort((a, b) => b[1] - a[1]);
+    const need = Object.entries(ONE_TERM_NEED).map(([k, x]) => [x, staff.filter(r => r.answers.oneTerm.need === k).length]);
+    const prio = SUBJECTS.map(x => [x.name, staff.filter(r => (r.answers.oneTerm.priority || []).includes(x.key)).length]).sort((a, b) => b[1] - a[1]);
+    const want = Object.entries(STUDENT_WANT).map(([k, x]) => [x, studs.filter(r => r.answers.oneTerm.want === k).length]);
+    const impact = avg(staff.map(r => r.answers.oneTerm.impact)), cost = avg(byRole(staff, "director").map(r => r.answers.oneTerm.cost).filter(x => x != null));
+    const texts = textsOf(l).filter(x => x.kind === "การจัดสรรภาคเรียนเดียว" || x.themes.includes("alloc")).slice(0, includeAllTexts ? 500 : 8);
+    return sub(`${ALLOC[g]} (ไม่ได้รับใบงานภาคเรียนที่ ${g === "sem1" ? 2 : 1})`, `
+      <p>ผู้บริหารและครูตอบ ${nf(staff.length)} คน · นักเรียน ${nf(studs.length)} คน · ผลกระทบเฉลี่ย <b>${fmt(impact)}</b>/5${impact == null ? "" : ` (${IMPACT_SCALE[lvNum(impact) - 1]})`} · ต้องการทั้ง 2 ภาคเรียน <b>${p0(shareOf(staff, r => r.answers.oneTerm.need === "both"))}</b>${cost != null ? ` · ค่าใช้จ่ายแทนใบงานเฉลี่ย <b>${nf(Math.round(cost))}</b> บาท/โรงเรียน/ภาคเรียน` : ""}</p>
+      <div class="rp-2"><div><h4>วิธีจัดการเรียนรู้แทนใบงาน</h4>${countBars(coping, staff.length)}</div><div><h4>ความต้องการปีถัดไป</h4>${countBars(need, staff.length)}</div></div>
+      <div class="rp-2"><div><h4>วิชาที่ต้องการมากที่สุด</h4>${countBars(prio, staff.length)}</div><div><h4>นักเรียนอยากมีใบงานทุกภาคเรียน</h4>${countBars(want, studs.length)}</div></div>
+      ${texts.length ? `<h4>ตัวอย่างข้อเสนอแนะ</h4><ul class="rp-q">${texts.map(x => `<li>“${esc(x.txt)}” <small>— ${esc(ROLES[x.r.role]?.short)}, ${esc(x.r.province)}</small></li>`).join("")}</ul>` : ""}`);
+  }).join("");
+
+  // 8 ข้อเสนอแนะตามกลุ่ม
+  const T = textsOf(list);
+  const keys = [...THEMES.map(x => x.key), "other"];
+  const byG = Object.fromEntries(gs.map(g => [g, T.filter(x => x.r.allocation === g)]));
+  const themeTbl = tbl(["ประเด็น", ...gs.map(g => esc(ALLOC[g])), "รวม"], keys.map(k => `<tr><td>${esc(THEME_LABEL[k])}</td>${gs.map(g => { const c = byG[g].filter(x => x.themes.includes(k)).length; return `<td class="n">${c ? `${nf(c)} (${fmt(pct(c, byG[g].length), 0)}%)` : "–"}</td>`; }).join("")}<td class="n"><b>${nf(T.filter(x => x.themes.includes(k)).length)}</b></td></tr>`).join(""));
+  const themeDetail = gs.filter(g => byG[g].length).map(g => {
+    const arr = byG[g];
+    const ranked = THEMES.map(x => [x.key, arr.filter(y => y.themes.includes(x.key))]).filter(([k, a]) => a.length && k !== "praise").sort((a, b) => b[1].length - a[1].length);
+    return sub(`${ALLOC[g]} · ${nf(arr.length)} ข้อความ`, ranked.map(([k, a]) => `<h4>${esc(THEME_LABEL[k])} (${nf(a.length)})</h4><ul class="rp-q">${a.slice(0, 4).map(x => `<li>“${esc(x.txt)}” <small>— ${esc(ROLES[x.r.role]?.short)}, ${esc(x.r.province)}</small></li>`).join("")}</ul>`).join("") || `<p class="rp-muted">มีเฉพาะข้อความชื่นชม</p>`);
+  }).join("");
+
+  // ภาคผนวก
+  const appendix = includeAllTexts ? sec("ก", "ภาคผนวก ข้อเสนอแนะทั้งหมด", gs.filter(g => byG[g].length).map(g => sub(ALLOC[g], tbl(["กลุ่มผู้ตอบ", "ประเด็น", "ข้อความ", "โรงเรียน"],
+    byG[g].map(x => `<tr><td>${esc(ROLES[x.r.role]?.short)}</td><td>${esc(x.themes.map(k => THEME_LABEL[k]).join(", "))}</td><td>${esc(x.txt)}</td><td>${esc(x.r.schoolName)} (${esc(x.r.province)})</td></tr>`).join("")))).join("")) : "";
+
+  return `<div class="rp">
+    <section class="rp-cover">
+      ${logoSrc ? `<img src="${esc(logoSrc)}" alt="">` : ""}
+      <p class="rp-org">${esc(SURVEY.org)}</p>
+      <h1>รายงานผลการสำรวจการใช้ชุดกิจกรรมการเรียนรู้ (ใบงาน)</h1>
+      <p class="rp-sub">${esc(SURVEY.subtitle)} ปีการศึกษา ${esc(SURVEY.year)}</p>
+      <dl><div><dt>ขอบเขตข้อมูล</dt><dd>${esc(filt)}</dd></div><div><dt>จำนวนผู้ตอบ</dt><dd>${nf(list.length)} คน จาก ${nf(new Set(list.map(r => r.schoolCode)).size)} โรงเรียน</dd></div><div><dt>วันที่จัดทำรายงาน</dt><dd>${esc(today)}</dd></div></dl>
+      ${DEMO ? `<p class="rp-warn">รายงานนี้สร้างจากข้อมูลตัวอย่าง (โหมดสาธิต)</p>` : ""}
+    </section>
+    ${sec(1, "บทสรุปสำหรับผู้บริหาร", `${kpis}${kpis2}${B.length ? bulletsHtml(B) : `<p class="rp-muted">ยังไม่มีข้อมูล</p>`}
+      <p class="rp-muted">เกณฑ์แปลความหมายค่าเฉลี่ย: 4.51–5.00 มากที่สุด · 3.51–4.50 มาก · 2.51–3.50 ปานกลาง · 1.51–2.50 น้อย · 1.00–1.50 น้อยที่สุด</p>`)}
+    ${sec(2, "ข้อมูลผู้ตอบแบบสำรวจ", sub("อัตราการตอบตามกลุ่มการจัดสรร", tbl(["กลุ่ม", "โรงเรียนทั้งหมด", "ตอบแล้ว", "อัตราการตอบ", "ผู้บริหาร", "ครู", "นักเรียน"], respRows))
+      + sub("จังหวัดที่มีผู้ตอบมากที่สุด", tbl(["จังหวัด", "โรงเรียน", "ผู้ตอบ (คน)"], provRows || `<tr><td colspan="3">–</td></tr>`)))}
+    ${sec(3, "ผลการประเมินใบงานของครู", sub(`ผลรายข้อ (${nf(tBl.length)} ชุดการประเมิน จากครู ${nf(t.length)} คน)`, itemTable(TEACHER_GROUPS, itemStats(tBl, TEACHER_ITEMS.length)))
+      + `<div class="rp-2">${sub("รายวิชา", tbl(["วิชา", "n", "x̄"], tSubj))}${sub("รายชั้น", tbl(["ชั้น", "n", "x̄"], tGrade))}</div>`
+      + `<div class="rp-2">${sub("ลักษณะการใช้ใบงาน", countBars(use, t.length))}${sub("การเก็บรักษาใบงาน", countBars(store, t.length))}</div>`)}
+    ${sec(4, "ความพึงพอใจของนักเรียน", sub(`ผลรายข้อ (${nf(sBl.length)} ชุดการประเมิน จากนักเรียน ${nf(s.length)} คน)`, itemTable(STUDENT_GROUPS, itemStats(sBl, STUDENT_ITEMS.length)))
+      + `<div class="rp-2">${sub("รายวิชา", tbl(["วิชา", "n", "x̄"], sSubj))}${sub("ใบงานวิชาที่นักเรียนชอบมากที่สุด", countBars(fav, s.length))}</div>`)}
+    ${sec(5, "การใช้และการจัดส่งใบงาน (ผู้บริหาร) และคู่มือครู", `<div class="rp-2">${sub("ลักษณะการใช้ใบงานของโรงเรียน", countBars(dUsage, d.length))}${sub("ช่วงเวลาที่ได้รับใบงาน", countBars(dDel, d.length))}</div>`
+      + `<div class="rp-2">${sub("ความเพียงพอของใบงาน", countBars(dAdq, d.length))}${sub("ความถี่ในการใช้คู่มือครู / แผน", countBars(manUse, tm.length))}</div>`
+      + sub("ความเหมาะสมของคู่มือครูและแผนการจัดการเรียนรู้", tbl(["ข้อ", "รายการ", "n", "x̄", "S.D.", "ระดับ"], manRows)))}
+    ${sec(6, "เปรียบเทียบระหว่างกลุ่มการจัดสรร", cmp + `<p class="rp-muted">กลุ่มที่มีผู้ตอบน้อยกว่า 30 คนควรตีความอย่างระมัดระวัง</p>`)}
+    ${oneGs.length ? sec(7, "โรงเรียนที่ได้รับใบงานภาคเรียนเดียว", oneTerm) : ""}
+    ${sec(8, "ข้อเสนอแนะ จัดกลุ่มตามประเด็น", sub("จำนวนข้อความในแต่ละประเด็น", themeTbl) + `<p class="rp-muted">จัดประเด็นอัตโนมัติจากคำสำคัญ 1 ข้อความอาจอยู่ได้หลายประเด็น</p>` + themeDetail)}
+    ${appendix}
+  </div>`;
+}
+
+function printReport() {
+  const host = $("#report");
+  host.innerHTML = buildReport($("#rpAll").checked);
+  document.body.classList.add("printing");
+  const done = () => { document.body.classList.remove("printing"); host.innerHTML = ""; window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done);
+  const imgs = [...host.querySelectorAll("img")].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })).filter(Boolean);
+  Promise.all([document.fonts?.ready, ...imgs]).then(() => setTimeout(() => window.print(), 150));
+}
+$("#pdf").onclick = printReport;
 $("#xlsx").onclick = exportXlsx;
 $("#xlsxMissing").onclick = exportMissing;
 
