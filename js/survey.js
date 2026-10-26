@@ -3,7 +3,8 @@ import { DEMO, submitResponse, loadSchools, normalize, AlreadySubmittedError, Su
 import {
   ROLES, SUBJECTS, SUBJECT_NAME, GRADES, STUDENT_GRADES, ALLOC, AFFILIATIONS, MAJORS,
   DIRECTOR_USAGE, TEACHER_USE, TEACHER_STORE, TEACHER_GROUPS, STUDENT_GROUPS,
-  TEACHER_SCALE, STUDENT_SCALE
+  TEACHER_SCALE, STUDENT_SCALE, DELIVERY, ADEQUACY, ONE_TERM_COPING, ONE_TERM_NEED, IMPACT_SCALE,
+  STUDENT_WANT, missingTerm, MANUAL_USE, MANUAL_ITEMS
 } from "./questions.js";
 
 const $ = s => document.querySelector(s);
@@ -58,6 +59,44 @@ function matrix(k, re, label) {
       return `<tr><td>${i + 1}. ${esc(s.name)}</td>${GRADES.map(g => `<td class="c">
         <input type="checkbox" aria-label="${esc(s.name)} ป.${g}" value="${g}" data-num=1 data-k="${k}.${s.key}" data-re="${re}" ${cur.includes(g) ? "checked" : ""}></td>`).join("")}</tr>`;
     }).join("")}</tbody></table></div>`;
+}
+
+// คะแนน 1 ข้อ (ใช้ปุ่มวงกลมแบบเดียวกับชุดประเมิน)
+function single(k, label, id, no = "") {
+  const cur = val(k);
+  return `<div class="ritem" id="${id}"><span class="no">${no}</span><span class="txt">${esc(label)}</span>
+    <div class="scale" role="radiogroup" aria-label="${esc(label)}">${[5, 4, 3, 2, 1].map(v => `
+      <label><input type="radio" name="${k}" value="${v}" data-num=1 data-k="${k}" ${cur === v ? "checked" : ""}><span data-v="${v}">${v}</span></label>`).join("")}
+    </div></div>`;
+}
+const req = '<b style="color:var(--bad)">*</b>';
+
+// ส่วนเฉพาะโรงเรียนที่ได้รับใบงานภาคเรียนเดียว
+function oneTermSection() {
+  const t = missingTerm(schoolAlloc());
+  if (!t) return "";
+  const subj = Object.fromEntries(SUBJECTS.map(s => [s.key, s.name]));
+  if (st.role === "student") return `
+  <section style="display:grid;gap:14px">
+    <h3>ภาคเรียนที่ ${t} โรงเรียนไม่ได้รับใบงาน</h3>
+    <fieldset id="f_otWant"><legend>นักเรียนอยากให้มีใบงานทุกภาคเรียนไหม ${req}</legend>${radios("ans.oneTerm.want", STUDENT_WANT)}</fieldset>
+  </section>`;
+  return `
+  <section style="display:grid;gap:14px">
+    <h3>สำหรับโรงเรียนที่ได้รับใบงานภาคเรียนเดียว</h3>
+    <p class="hint">โรงเรียนของท่านได้รับใบงานเฉพาะภาคเรียนที่ ${3 - t} คำถามนี้ถามถึงภาคเรียนที่ ${t} ที่ไม่ได้รับใบงาน เพื่อใช้วางแผนการจัดสรรรอบต่อไป</p>
+    <fieldset id="f_otCoping"><legend>ในภาคเรียนที่ ${t} ${st.role === "director" ? "โรงเรียน" : "ท่าน"}จัดการเรียนรู้แทนใบงานอย่างไร (เลือกได้หลายข้อ) ${req}</legend>
+      ${checks("ans.oneTerm.coping", ONE_TERM_COPING, { re: "otOther" })}
+      <div id="otOther">${(st.ans.oneTerm?.coping || []).includes("other") ? text("ans.oneTerm.copingOther", "ระบุวิธีอื่น ๆ") : ""}</div></fieldset>
+    ${st.role === "director" ? `<div class="grid2">${text("ans.oneTerm.cost", "ค่าใช้จ่ายที่โรงเรียนใช้แทนใบงานในภาคเรียนนั้น (บาท โดยประมาณ)", { type: "number", attrs: 'min="0" inputmode="numeric"' })}</div>` : ""}
+    <div id="f_otImpact">
+      <p class="legend" style="margin-bottom:4px">${[5, 4, 3, 2, 1].map(v => `<span><b>${v}</b> ${IMPACT_SCALE[v - 1]}</span>`).join("")}</p>
+      ${single("ans.oneTerm.impact", `การไม่ได้รับใบงานในภาคเรียนที่ ${t} ส่งผลต่อการเรียนรู้ของนักเรียนมากน้อยเพียงใด`, "f_otImpactRow")}
+    </div>
+    <fieldset id="f_otNeed"><legend>ความต้องการในปีการศึกษาถัดไป ${req}</legend>${radios("ans.oneTerm.need", ONE_TERM_NEED)}</fieldset>
+    <fieldset><legend>ถ้าได้รับเพิ่มได้จำกัด วิชาที่ต้องการมากที่สุด (เลือกได้หลายวิชา)</legend>${checks("ans.oneTerm.priority", subj)}</fieldset>
+    ${area("ans.oneTerm.suggestion", "ข้อเสนอแนะต่อการจัดสรรใบงาน สำหรับโรงเรียนที่ได้รับภาคเรียนเดียว")}
+  </section>`;
 }
 
 // ---------- rating blocks ----------
@@ -157,13 +196,22 @@ function directorForm() {
     <fieldset id="f_usage"><legend>ลักษณะการใช้ <b style="color:var(--bad)">*</b></legend>
       ${radios("ans.usage", DIRECTOR_USAGE, { re: "usage" })}</fieldset>
     <div id="usageMatrix">${st.ans.usage === "partial" ? `<p class="hint" style="margin-bottom:6px">เลือกวิชาและระดับชั้นที่ใช้ใบงาน</p>${matrix("ans.usageMatrix", "none", "วิชาและชั้นที่ใช้")}` : ""}</div>
+    <div class="grid2">${text("ans.students", "จำนวนนักเรียน ป.1 – ป.6 ทั้งหมด (คน)", { type: "number", req: true, attrs: 'min="0" inputmode="numeric" id="f_students"' })}</div>
+    <fieldset id="f_delivery"><legend>ช่วงเวลาที่ได้รับใบงานในภาคเรียนล่าสุด ${req}</legend>${radios("ans.delivery", DELIVERY)}</fieldset>
+    <fieldset id="f_adequacy"><legend>จำนวนใบงานที่ได้รับเทียบกับจำนวนนักเรียน ${req}</legend>${radios("ans.adequacy", ADEQUACY, { re: "short" })}
+      <div id="shortBox">${st.ans.adequacy === "short" ? text("ans.shortBy", "ขาดประมาณ (เล่ม)", { type: "number", attrs: 'min="0" inputmode="numeric"' }) : ""}</div></fieldset>
   </section>
+  ${oneTermSection()}
   <section style="display:grid;gap:14px">
     <h3>ตอนที่ 3 ข้อเสนอแนะอื่น ๆ (ถ้ามี)</h3>
     ${area("ans.suggestion", "ข้อเสนอแนะที่เป็นประโยชน์ต่อการใช้และพัฒนาคู่มือครู แผนการจัดการเรียนรู้ และชุดกิจกรรมการเรียนรู้ (ใบงาน)")}
   </section>`;
 }
 
+function manualItems() {
+  if (!st.ans.manual?.use || st.ans.manual.use === "rarely") return "";
+  return `${scaleLegend(TEACHER_SCALE)}${MANUAL_ITEMS.map((t, i) => single(`ans.manual.r.${i}`, t, `f_manual_${i}`, `${i + 1})`)).join("")}`;
+}
 function teacherForm() {
   return `
   <section style="display:grid;gap:14px">
@@ -185,8 +233,16 @@ function teacherForm() {
   </section>
   <section style="display:grid;gap:14px">
     <h3>ตอนที่ 2 ความพึงพอใจการใช้ชุดกิจกรรมการเรียนรู้ (ใบงาน)</h3>
-    ${area("ans.satisfaction", "ความพึงพอใจโดยรวมต่อชุดกิจกรรมการเรียนรู้ (ใบงาน)")}
+    <div id="f_overall">${single("ans.overall", "ระดับความพึงพอใจโดยรวมต่อใบงาน (5 = พึงพอใจมากที่สุด)", "f_overallRow")}</div>
+    ${area("ans.satisfaction", "ความพึงพอใจโดยรวม (อธิบายเพิ่มเติม)")}
   </section>
+  <section style="display:grid;gap:14px">
+    <h3>การใช้คู่มือครูและแผนการจัดการเรียนรู้</h3>
+    <fieldset id="f_manualUse"><legend>ท่านใช้คู่มือครู / แผนการจัดการเรียนรู้ของ DLTV บ่อยเพียงใด ${req}</legend>${radios("ans.manual.use", MANUAL_USE, { re: "manual" })}</fieldset>
+    <div id="manualBox">${manualItems()}</div>
+    ${area("ans.manual.suggestion", "สิ่งที่ควรปรับปรุงในคู่มือครูและแผนการจัดการเรียนรู้")}
+  </section>
+  ${oneTermSection()}
   <section style="display:grid;gap:14px">
     <h3>ตอนที่ 3 ข้อเสนอแนะอื่น ๆ (ถ้ามี)</h3>
     ${area("ans.suggestion", "ข้อเสนอแนะที่เป็นประโยชน์ต่อการใช้และพัฒนาคู่มือครู แผนการจัดการเรียนรู้ และชุดกิจกรรมการเรียนรู้ (ใบงาน)")}
@@ -209,6 +265,11 @@ function studentForm() {
     ${scaleLegend(STUDENT_SCALE)}
     <div id="blocks" style="display:grid;gap:14px"></div>
   </section>
+  <section style="display:grid;gap:14px">
+    <h3>ความพึงพอใจโดยรวม</h3>
+    <div id="f_overall">${single("ans.overall", "นักเรียนพอใจใบงานโดยรวมแค่ไหน (5 = พอใจมากที่สุด)", "f_overallRow")}</div>
+  </section>
+  ${oneTermSection()}
   <section style="display:grid;gap:14px">
     <h3>ตอนที่ 3 นักเรียนชอบใบงานวิชาอะไรมากที่สุด</h3>
     <fieldset id="f_fav"><legend>เลือกได้มากกว่า 1 วิชา</legend>${checks("ans.favorites", subj)}</fieldset>
@@ -238,6 +299,9 @@ function rerender(what) {
   if (what === "usage") $("#usageMatrix").innerHTML = st.ans.usage === "partial"
     ? `<p class="hint" style="margin-bottom:6px">เลือกวิชาและระดับชั้นที่ใช้ใบงาน</p>${matrix("ans.usageMatrix", "none", "วิชาและชั้นที่ใช้")}` : "";
   if (what === "useOther") $("#useOther").innerHTML = (st.ans.use || []).includes("other") ? text("ans.useOther", "ระบุลักษณะการใช้อื่น ๆ") : "";
+  if (what === "short") $("#shortBox").innerHTML = st.ans.adequacy === "short" ? text("ans.shortBy", "ขาดประมาณ (เล่ม)", { type: "number", attrs: 'min="0" inputmode="numeric"' }) : "";
+  if (what === "manual") $("#manualBox").innerHTML = manualItems();
+  if (what === "otOther") $("#otOther").innerHTML = (st.ans.oneTerm?.coping || []).includes("other") ? text("ans.oneTerm.copingOther", "ระบุวิธีอื่น ๆ") : "";
   if (what === "storeOther") $("#storeOther").innerHTML = st.ans.store === "other" ? text("ans.storeOther", "ระบุวิธีเก็บรักษาอื่น ๆ") : "";
 }
 
@@ -329,6 +393,9 @@ function validateForm() {
     need(a.coordinator?.mobile, "#f_cmobile", "กรอกเบอร์มือถือผู้ประสานงาน");
     need(a.usage, "#f_usage", "เลือกลักษณะการใช้ใบงาน");
     if (a.usage === "partial") need(Object.values(a.usageMatrix || {}).some(x => x.length), "#usageMatrix", "เลือกวิชาและชั้นที่ใช้ใบงานอย่างน้อย 1 ช่อง");
+    need(a.students != null && a.students !== "", "#f_students", "กรอกจำนวนนักเรียน");
+    need(a.delivery, "#f_delivery", "เลือกช่วงเวลาที่ได้รับใบงาน");
+    need(a.adequacy, "#f_adequacy", "เลือกความเพียงพอของใบงาน");
   } else {
     if (st.role === "teacher") {
       need(Object.values(a.teaching || {}).some(x => x.length), "#f_teaching", "เลือกวิชาและชั้นที่ใช้ใบงานอย่างน้อย 1 ช่อง");
@@ -338,6 +405,11 @@ function validateForm() {
       need(a.grade, "#f_grade", "เลือกระดับชั้น");
       need((a.subjectsUsed || []).length, "#f_used", "เลือกวิชาที่ใช้ใบงาน");
     }
+    need(a.overall, "#f_overallRow", "ให้คะแนนความพึงพอใจโดยรวม");
+    if (st.role === "teacher") {
+      need(a.manual?.use, "#f_manualUse", "เลือกความถี่ในการใช้คู่มือครู/แผนการจัดการเรียนรู้");
+      if (a.manual?.use && a.manual.use !== "rarely") MANUAL_ITEMS.forEach((_, i) => need(a.manual?.r?.[i], `#f_manual_${i}`, `คู่มือครู ข้อ ${i + 1}`));
+    }
     const total = itemCount();
     for (const b of blockKeys()) {
       const r = (a.ratings || {})[b.key] || {};
@@ -346,6 +418,15 @@ function validateForm() {
         miss.forEach(i => markMissing(`#ri_${b.key}_${i}`));
         errs.push([`#rb_${b.key}`, `${b.title}: ยังไม่ได้ตอบ ${miss.length} ข้อ`]);
       }
+    }
+  }
+  if (missingTerm(schoolAlloc())) {
+    const o = a.oneTerm || {};
+    if (st.role === "student") need(o.want, "#f_otWant", "ตอบคำถามเรื่องใบงานภาคเรียนที่ไม่ได้รับ");
+    else {
+      need((o.coping || []).length, "#f_otCoping", "เลือกวิธีจัดการเรียนรู้ในภาคเรียนที่ไม่ได้รับใบงาน");
+      need(o.impact, "#f_otImpactRow", "ให้คะแนนผลกระทบจากการไม่ได้รับใบงาน");
+      need(o.need, "#f_otNeed", "เลือกความต้องการในปีการศึกษาถัดไป");
     }
   }
   return errs;
@@ -374,6 +455,20 @@ function buildRecord() {
     a.usageMatrix = a.usage === "partial" ? Object.fromEntries(Object.entries(a.usageMatrix || {}).filter(([, v]) => v.length)) : {};
     ["deputies", "teachersTotal", "clerks"].forEach(k => { a[k] = a[k] === "" || a[k] == null ? null : Number(a[k]); });
     a.majors = Object.fromEntries(Object.entries(a.majors || {}).filter(([, v]) => v !== "" && v != null).map(([k, v]) => [k, Number(v)]));
+  }
+  // ทำความสะอาดคำตอบส่วนเพิ่ม
+  if (!missingTerm(schoolAlloc())) delete a.oneTerm;
+  else if (a.oneTerm) {
+    if (a.oneTerm.cost != null) a.oneTerm.cost = a.oneTerm.cost === "" ? null : Number(a.oneTerm.cost);
+    if (!(a.oneTerm.coping || []).includes("other")) delete a.oneTerm.copingOther;
+  }
+  if (a.manual) {
+    if (a.manual.use === "rarely") delete a.manual.r;
+    else if (a.manual.r) a.manual.r = MANUAL_ITEMS.map((_, i) => Number(a.manual.r[i]));
+  }
+  if (st.role === "director") {
+    a.students = a.students === "" || a.students == null ? null : Number(a.students);
+    if (a.adequacy !== "short") delete a.shortBy; else if (a.shortBy != null) a.shortBy = a.shortBy === "" ? null : Number(a.shortBy);
   }
   return {
     role: st.role, surveyYear: SURVEY.year,

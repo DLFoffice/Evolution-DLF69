@@ -348,7 +348,7 @@ footer.foot { color: var(--muted); font-size: .85rem; display: flex; flex-wrap: 
 .kpi .k { font-size: .84rem; color: var(--muted); }
 .kpi .v { font-family: var(--font-display); font-size: 2rem; font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
 .kpi .s { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 18px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 18px; align-items: start; }
 @media (max-width: 480px) { .two { grid-template-columns: 1fr; } }
 .hbars { display: grid; gap: 10px; }
 .hbar { display: grid; grid-template-columns: minmax(7rem, 13rem) 1fr 4.2rem; gap: 10px; align-items: center; font-size: .9rem; }
