@@ -31,6 +31,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // เครื่องหมายว่าโรงเรียนส่งแบบผู้บริหารแล้ว (ไม่มีข้อมูลส่วนตัว) ให้หน้าแบบสำรวจเช็กก่อนส่งได้
+    match /directorDone/{code} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.resource.data.keys().hasOnly(['at'])
+        && request.resource.data.at == request.time
+        && existsAfter(/databases/$(database)/documents/responses/$('director_' + code));
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     match /responses/{docId} {
       allow create: if validResponse(docId);
       allow read, delete: if isAdmin();
