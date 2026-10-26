@@ -28,6 +28,9 @@ function demoWrite(list) {
 }
 
 export class AlreadySubmittedError extends Error {}
+export class SubmitError extends Error {
+  constructor(code, cause) { super(code); this.code = code; this.cause = cause; }
+}
 
 // บันทึกคำตอบ: ผู้บริหารใช้ id = director_<รหัสโรงเรียน> เพื่อให้ตอบได้ 1 ชุดต่อโรงเรียน
 export async function submitResponse(data) {
@@ -42,12 +45,23 @@ export async function submitResponse(data) {
   const { fs, db } = await init();
   const payload = { ...data, submittedAt: fs.serverTimestamp() };
   try {
-    if (id) { await fs.setDoc(fs.doc(db, "responses", id), payload); return id; }
+    if (id) {
+      // ตรวจว่าโรงเรียนนี้เคยส่งแบบผู้บริหารแล้วหรือยัง (directorDone อ่านได้ทุกคน เก็บแค่เวลาส่ง)
+      const mark = fs.doc(db, "directorDone", data.schoolCode);
+      let done = false;
+      try { done = (await fs.getDoc(mark)).exists(); } catch { /* อ่านไม่ได้ = กฎยังไม่ถูกเผยแพร่ ให้ไปเจอข้อผิดพลาดตอนบันทึกแทน */ }
+      if (done) throw new AlreadySubmittedError();
+      const batch = fs.writeBatch(db);
+      batch.set(fs.doc(db, "responses", id), payload);
+      batch.set(mark, { at: fs.serverTimestamp() });
+      await batch.commit();
+      return id;
+    }
     const ref = await fs.addDoc(fs.collection(db, "responses"), payload);
     return ref.id;
   } catch (e) {
-    if (id && e && e.code === "permission-denied") throw new AlreadySubmittedError();
-    throw e;
+    if (e instanceof AlreadySubmittedError) throw e;
+    throw new SubmitError(e && e.code ? e.code : "unknown", e);
   }
 }
 
@@ -66,6 +80,8 @@ export async function deleteResponse(id) {
   if (DEMO) { demoWrite(demoRead().filter(r => r.id !== id)); return; }
   const { fs, db } = await init();
   await fs.deleteDoc(fs.doc(db, "responses", id));
+  // ลบเครื่องหมาย "ส่งแล้ว" ด้วย เพื่อให้โรงเรียนส่งแบบผู้บริหารใหม่ได้
+  if (id.startsWith("director_")) await fs.deleteDoc(fs.doc(db, "directorDone", id.slice(9)));
 }
 
 export function demoReplace(list) { demoWrite(list); }

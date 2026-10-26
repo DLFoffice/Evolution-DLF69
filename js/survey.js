@@ -1,5 +1,5 @@
 import { SURVEY } from "./config.js";
-import { DEMO, submitResponse, loadSchools, normalize, AlreadySubmittedError } from "./store.js";
+import { DEMO, submitResponse, loadSchools, normalize, AlreadySubmittedError, SubmitError } from "./store.js";
 import {
   ROLES, SUBJECTS, SUBJECT_NAME, GRADES, STUDENT_GRADES, ALLOC, AFFILIATIONS, MAJORS,
   DIRECTOR_USAGE, TEACHER_USE, TEACHER_STORE, TEACHER_GROUPS, STUDENT_GROUPS,
@@ -226,6 +226,14 @@ function rerender(what) {
 }
 
 // ---------- school step ----------
+// เดาหน่วยงานต้นสังกัดจากเขตพื้นที่ (ผู้ตอบเปลี่ยนเองได้)
+function guessAffiliation(s) {
+  const a = s.area || "", n = s.name || "";
+  if (/วังไกลกังวล/.test(n)) return "wkk";
+  if (/ตชด|ตำรวจตระเวนชายแดน/.test(a + n)) return "bpp";
+  if (/^สพ[ปม]/.test(a)) return "obec";
+  return null;
+}
 const schoolAlloc = () => (st.mode === "manual" ? "origin" : (st.school && st.school.alloc) || "origin");
 
 function renderPicked() {
@@ -409,7 +417,8 @@ document.addEventListener("click", e => {
   if (t.dataset.back) show(+t.dataset.back);
   if (t.dataset.code) {
     st.school = schools.find(s => s.code === t.dataset.code);
-    if (!st.affiliation && /^สพ[ปม]/.test(st.school.area)) st.affiliation = "obec";
+    const guess = guessAffiliation(st.school);
+    if (guess) st.affiliation = guess;
     $("#results").hidden = true; renderPicked(); renderAffil(); saveDraft();
   }
   if (t.dataset.copy) {
@@ -440,9 +449,12 @@ $("#submit").onclick = async () => {
     clearDraft(); show(4);
   } catch (err) {
     const box = $("#formErr"); box.hidden = false;
+    const code = err instanceof SubmitError ? err.code : "";
     box.textContent = err instanceof AlreadySubmittedError
       ? "โรงเรียนนี้ส่งแบบสำรวจของผู้บริหารแล้ว (ตอบได้ 1 ชุดต่อโรงเรียน) หากต้องการแก้ไขข้อมูล กรุณาติดต่อผู้ดูแลระบบ"
-      : "ส่งไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วกดส่งอีกครั้ง คำตอบของท่านยังอยู่ในหน้านี้";
+      : code === "permission-denied"
+      ? "ระบบยังไม่พร้อมรับคำตอบ (ฐานข้อมูลไม่อนุญาตให้บันทึก) กรุณาแจ้งผู้ดูแลระบบ คำตอบของท่านยังอยู่ในหน้านี้ [permission-denied]"
+      : `ส่งไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วกดส่งอีกครั้ง คำตอบของท่านยังอยู่ในหน้านี้${code ? ` [${code}]` : ""}`;
     console.error(err);
   } finally { btn.disabled = false; btn.textContent = "ส่งแบบสำรวจ"; }
 };
