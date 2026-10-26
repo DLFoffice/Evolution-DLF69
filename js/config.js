@@ -2,12 +2,13 @@
 // 1) วางค่า Firebase config ของโปรเจกต์ (Firebase console > Project settings > Your apps > Web app)
 // 2) ถ้า apiKey ว่าง ระบบจะทำงานใน "โหมดสาธิต" เก็บข้อมูลไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น
 export const FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyCXus26VN2Lm43mMgSTjh2DmtInQxBCeAo",
+  authDomain: "evolution-dlf69.firebaseapp.com",
+  projectId: "evolution-dlf69",
+  storageBucket: "evolution-dlf69.firebasestorage.app",
+  messagingSenderId: "1014954756248",
+  appId: "1:1014954756248:web:1893fc73c16b27fbd8e8ed",
+  measurementId: "G-N0VWQYJMSR"
 };
 
 export const SURVEY = {
