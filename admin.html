@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ผลสำรวจใบงาน DLTV</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=Sarabun:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<main class="wrap wide">
+  <header class="mast">
+    <p class="eyebrow">ระบบหลังบ้าน · ผู้ดูแลระบบ</p>
+    <h1>ผลสำรวจการใช้ชุดกิจกรรมการเรียนรู้ (ใบงาน)</h1>
+    <p class="sub" id="sub"></p>
+  </header>
+
+  <div class="demo-flag" id="demoFlag" hidden>
+    โหมดสาธิต: ข้อมูลด้านล่างเป็นคำตอบตัวอย่างที่สุ่มขึ้น ร่วมกับคำตอบที่ส่งจากเบราว์เซอร์เครื่องนี้
+    · <button class="link" id="seed" type="button">สุ่มข้อมูลตัวอย่างใหม่</button>
+    · <button class="link" id="wipe" type="button">ล้างข้อมูลทั้งหมด</button>
+  </div>
+
+  <section class="panel" id="login" hidden style="max-width:26rem">
+    <h2>เข้าสู่ระบบ</h2>
+    <form id="loginForm" style="display:grid;gap:12px">
+      <label class="f"><span>อีเมล</span><input type="email" id="email" autocomplete="username" required></label>
+      <label class="f"><span>รหัสผ่าน</span><input type="password" id="pw" autocomplete="current-password" required></label>
+      <div id="loginErr" class="alert err" hidden></div>
+      <button class="btn" type="submit">เข้าสู่ระบบ</button>
+    </form>
+  </section>
+
+  <div id="dash" hidden style="display:grid;gap:18px">
+    <section class="panel">
+      <div class="toolbar">
+        <label class="f"><span>กลุ่มการจัดสรร</span><select id="fAlloc"></select></label>
+        <label class="f"><span>จังหวัด</span><select id="fProv"></select></label>
+        <label class="f"><span>เขตพื้นที่การศึกษา</span><select id="fArea"></select></label>
+        <label class="f"><span>ประเภทโรงเรียน</span><select id="fType">
+          <option value="">ทั้งหมด</option><option value="destination">ปลายทาง</option><option value="origin">ต้นทาง / นอกรายชื่อ</option></select></label>
+        <div class="btns">
+          <button class="btn small" id="xlsx" type="button">ดาวน์โหลดข้อมูล (Excel)</button>
+          <button class="btn ghost small" id="xlsxMissing" type="button">รายชื่อโรงเรียนที่ยังไม่ตอบ</button>
+          <button class="btn ghost small" id="reload" type="button">โหลดข้อมูลใหม่</button>
+          <button class="btn ghost small" id="logout" type="button">ออกจากระบบ</button>
+        </div>
+      </div>
+      <p class="hint" id="status"></p>
+    </section>
+    <nav class="tabs" role="tablist" id="tabs"></nav>
+    <div id="view" style="display:grid;gap:18px"></div>
+  </div>
+</main>
+<script type="module" src="js/admin.js"></script>
+</body>
+</html>
