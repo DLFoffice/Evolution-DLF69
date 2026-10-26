@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ผู้ดูแลระบบ = มีเอกสาร admins/{อีเมลตัวพิมพ์เล็ก} (เพิ่มเองใน Firebase console)
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()));
+    }
+
+    function validResponse(docId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['role','surveyYear','schoolType','allocation','affiliation','schoolCode','schoolName',
+                               'tambon','amphoe','province','zip','phone','area','answers','submittedAt'])
+        && d.role in ['director', 'teacher', 'student']
+        && d.schoolType in ['destination', 'origin']
+        && d.allocation in ['sem1', 'sem2', 'both', 'origin']
+        && d.affiliation in ['obec', 'bpp', 'wkk']
+        && d.schoolCode is string && d.schoolCode.matches('^[0-9]{6,12}$')
+        && d.schoolName is string && d.schoolName.size() > 0 && d.schoolName.size() <= 200
+        && d.province is string && d.province.size() <= 100
+        && d.surveyYear is string && d.surveyYear.size() <= 10
+        && d.answers is map
+        && d.submittedAt == request.time
+        // ผู้บริหารตอบได้ 1 ชุดต่อโรงเรียน: เอกสารต้องชื่อ director_<รหัส>
+        && ((d.role == 'director') == (docId == 'director_' + d.schoolCode));
+    }
+
+    match /admins/{email} {
+      allow read: if request.auth != null && request.auth.token.email.lower() == email;
+      allow write: if false;
+    }
+
+    match /responses/{docId} {
+      allow create: if validResponse(docId);
+      allow read, delete: if isAdmin();
+      allow update: if false;   // ส่งแล้วแก้ไม่ได้ (ทำให้ผู้บริหารตอบซ้ำไม่ได้)
+    }
+  }
+}
